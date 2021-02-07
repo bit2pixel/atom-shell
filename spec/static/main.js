@@ -1,157 +1,187 @@
-var app = require('app');
-var ipc = require('ipc');
-var dialog = require('dialog');
-var BrowserWindow = require('browser-window');
-var Menu = require('menu');
+// Deprecated APIs are still supported and should be tested.
+process.throwDeprecation = false;
 
-var window = null;
+const electron = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, session } = electron;
 
+try {
+  require('fs').rmdirSync(app.getPath('userData'), { recursive: true });
+} catch (e) {
+  console.warn('Warning: couldn\'t clear user data directory:', e);
+}
+
+const fs = require('fs');
+const path = require('path');
+const util = require('util');
+const v8 = require('v8');
+
+const argv = require('yargs')
+  .boolean('ci')
+  .array('files')
+  .string('g').alias('g', 'grep')
+  .boolean('i').alias('i', 'invert')
+  .argv;
+
+let window = null;
+
+v8.setFlagsFromString('--expose_gc');
 app.commandLine.appendSwitch('js-flags', '--expose_gc');
+app.commandLine.appendSwitch('ignore-certificate-errors');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
-ipc.on('message', function(event, arg) {
-  event.sender.send('message', arg);
+// Disable security warnings (the security warnings test will enable them)
+process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = true;
+
+// Accessing stdout in the main process will result in the process.stdout
+// throwing UnknownSystemError in renderer process sometimes. This line makes
+// sure we can reproduce it in renderer process.
+// eslint-disable-next-line
+process.stdout
+
+// Access console to reproduce #3482.
+// eslint-disable-next-line
+console
+
+ipcMain.on('message', function (event, ...args) {
+  event.sender.send('message', ...args);
 });
 
-ipc.on('console.log', function(event, args) {
-  console.log.apply(console, args);
-});
+ipcMain.handle('get-modules', () => Object.keys(electron));
+ipcMain.handle('get-temp-dir', () => app.getPath('temp'));
+ipcMain.handle('ping', () => null);
 
-ipc.on('console.error', function(event, args) {
-  console.log.apply(console, args);
-});
+// Write output to file if OUTPUT_TO_FILE is defined.
+const outputToFile = process.env.OUTPUT_TO_FILE;
+const print = function (_, method, args) {
+  const output = util.format.apply(null, args);
+  if (outputToFile) {
+    fs.appendFileSync(outputToFile, output + '\n');
+  } else {
+    console[method](output);
+  }
+};
+ipcMain.on('console-call', print);
 
-ipc.on('process.exit', function(event, code) {
+ipcMain.on('process.exit', function (event, code) {
   process.exit(code);
 });
 
-ipc.on('eval', function(event, script) {
-  event.returnValue = eval(script);
+ipcMain.on('eval', function (event, script) {
+  event.returnValue = eval(script) // eslint-disable-line
 });
 
-ipc.on('echo', function(event, msg) {
+ipcMain.on('echo', function (event, msg) {
   event.returnValue = msg;
 });
 
-if (process.argv[1] == '--ci') {
-  process.removeAllListeners('uncaughtException');
-  process.on('uncaughtException', function(error) {
-    console.error(error, error.stack);
-    process.exit(1);
-  });
-}
+process.removeAllListeners('uncaughtException');
+process.on('uncaughtException', function (error) {
+  console.error(error, error.stack);
+  process.exit(1);
+});
 
-app.on('window-all-closed', function() {
+global.nativeModulesEnabled = !process.env.ELECTRON_SKIP_NATIVE_MODULE_TESTS;
+
+app.on('window-all-closed', function () {
   app.quit();
 });
 
-app.on('ready', function() {
-  var template = [
-    {
-      label: 'Atom',
-      submenu: [
-        {
-          label: 'Quit',
-          accelerator: 'CommandOrControl+Q',
-          click: function(item, window) { app.quit(); }
-        },
-      ],
-    },
-    {
-      label: 'Edit',
-      submenu: [
-        {
-          label: 'Undo',
-          accelerator: 'CommandOrControl+Z',
-          selector: 'undo:',
-        },
-        {
-          label: 'Redo',
-          accelerator: 'CommandOrControl+Shift+Z',
-          selector: 'redo:',
-        },
-        {
-          type: 'separator',
-        },
-        {
-          label: 'Cut',
-          accelerator: 'CommandOrControl+X',
-          selector: 'cut:',
-        },
-        {
-          label: 'Copy',
-          accelerator: 'CommandOrControl+C',
-          selector: 'copy:',
-        },
-        {
-          label: 'Paste',
-          accelerator: 'CommandOrControl+V',
-          selector: 'paste:',
-        },
-        {
-          label: 'Select All',
-          accelerator: 'CommandOrControl+A',
-          selector: 'selectAll:',
-        },
-      ]
-    },
-    {
-      label: 'View',
-      submenu: [
-        {
-          label: 'Reload',
-          accelerator: 'CommandOrControl+R',
-          click: function(item, window) { window.restart(); }
-        },
-        {
-          label: 'Enter Fullscreen',
-          click: function(item, window) { window.setFullScreen(true); }
-        },
-        {
-          label: 'Toggle DevTools',
-          accelerator: 'Alt+CommandOrControl+I',
-          click: function(item, window) { window.toggleDevTools(); }
-        },
-      ]
-    },
-    {
-      label: 'Window',
-      submenu: [
-        {
-          label: 'Open',
-          accelerator: 'CommandOrControl+O',
-        },
-        {
-          label: 'Close',
-          accelerator: 'CommandOrControl+W',
-          click: function(item, window) { window.close(); }
-        },
-      ]
-    },
-  ];
+app.on('gpu-process-crashed', (event, killed) => {
+  console.log(`GPU process crashed (killed=${killed})`);
+});
 
-  var menu = Menu.buildFromTemplate(template);
-  app.setApplicationMenu(menu);
+app.on('renderer-process-crashed', (event, contents, killed) => {
+  console.log(`webContents ${contents.id} crashed: ${contents.getURL()} (killed=${killed})`);
+});
 
+app.whenReady().then(async function () {
+  await session.defaultSession.clearCache();
+  await session.defaultSession.clearStorageData();
   // Test if using protocol module would crash.
-  require('protocol').registerProtocol('test-if-crashes', function() {});
+  electron.protocol.registerStringProtocol('test-if-crashes', function () {});
 
   window = new BrowserWindow({
-    title: 'atom-shell tests',
+    title: 'Electron Tests',
     show: false,
     width: 800,
     height: 600,
-    'web-preferences': {
-      javascript: true  // Test whether web-preferences crashes.
-    },
+    webPreferences: {
+      backgroundThrottling: false,
+      nodeIntegration: true,
+      enableRemoteModule: false,
+      webviewTag: true
+    }
   });
-  window.loadUrl('file://' + __dirname + '/index.html');
-  window.on('unresponsive', function() {
-    var chosen = dialog.showMessageBox(window, {
+  window.loadFile('static/index.html', {
+    query: {
+      grep: argv.grep,
+      invert: argv.invert ? 'true' : '',
+      files: argv.files ? argv.files.join(',') : undefined
+    }
+  });
+  window.on('unresponsive', function () {
+    const chosen = dialog.showMessageBox(window, {
       type: 'warning',
       buttons: ['Close', 'Keep Waiting'],
       message: 'Window is not responsing',
       detail: 'The window is not responding. Would you like to force close it or just keep waiting?'
     });
-    if (chosen == 0) window.destroy();
+    if (chosen === 0) window.destroy();
+  });
+  window.webContents.on('crashed', function () {
+    console.error('Renderer process crashed');
+    process.exit(1);
   });
 });
+
+ipcMain.on('prevent-next-will-attach-webview', (event) => {
+  event.sender.once('will-attach-webview', event => event.preventDefault());
+});
+
+ipcMain.on('disable-node-on-next-will-attach-webview', (event, id) => {
+  event.sender.once('will-attach-webview', (event, webPreferences, params) => {
+    params.src = `file://${path.join(__dirname, '..', 'fixtures', 'pages', 'c.html')}`;
+    webPreferences.nodeIntegration = false;
+  });
+});
+
+ipcMain.on('disable-preload-on-next-will-attach-webview', (event, id) => {
+  event.sender.once('will-attach-webview', (event, webPreferences, params) => {
+    params.src = `file://${path.join(__dirname, '..', 'fixtures', 'pages', 'webview-stripped-preload.html')}`;
+    delete webPreferences.preload;
+    delete webPreferences.preloadURL;
+  });
+});
+
+ipcMain.on('handle-uncaught-exception', (event, message) => {
+  suspendListeners(process, 'uncaughtException', (error) => {
+    event.returnValue = error.message;
+  });
+  fs.readFile(__filename, () => {
+    throw new Error(message);
+  });
+});
+
+ipcMain.on('handle-unhandled-rejection', (event, message) => {
+  suspendListeners(process, 'unhandledRejection', (error) => {
+    event.returnValue = error.message;
+  });
+  fs.readFile(__filename, () => {
+    Promise.reject(new Error(message));
+  });
+});
+
+// Suspend listeners until the next event and then restore them
+const suspendListeners = (emitter, eventName, callback) => {
+  const listeners = emitter.listeners(eventName);
+  emitter.removeAllListeners(eventName);
+  emitter.once(eventName, (...args) => {
+    emitter.removeAllListeners(eventName);
+    listeners.forEach((listener) => {
+      emitter.on(eventName, listener);
+    });
+
+    // eslint-disable-next-line standard/no-callback-literal
+    callback(...args);
+  });
+};

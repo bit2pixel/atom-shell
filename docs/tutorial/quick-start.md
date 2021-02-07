@@ -1,151 +1,307 @@
-# Quick start
+# Quick Start Guide
 
-## Introduction
+## Quickstart
 
-Generally, atom-shell enables you to create desktop applications with pure
-JavaScript by providing a runtime with rich native APIs. You could see it as
-a variant of the Node.js runtime which is focused on desktop applications
-instead of web servers.
+Electron is a framework that enables you to create desktop applications with JavaScript, HTML, and CSS. These applications can then be packaged to run directly on macOS, Windows, or Linux, or distributed via the Mac App Store or the Microsoft Store.
 
-It doesn't mean atom-shell is a JavaScript binding to GUI libraries. Instead,
-atom-shell uses web pages as its GUI, so you could also see it as a minimal
-Chromium browser, controlled by JavaScript.
+Typically, you create a desktop application for an operating system (OS) using each operating system's specific native application frameworks. Electron makes it possible to write your application once using technologies that you already know.
 
-### The browser side
+### Prerequisites
 
-If you have experience with Node.js web applications, you will know that there
-are two types of JavaScript scripts: the server side scripts and the client side
-scripts. Server-side JavaScript is that which runs on the Node.js
-runtime, while client-side JavaScript runs inside the user's browser.
+Before proceeding with Electron you need to install [Node.js][node-download].
+We recommend that you install either the latest `LTS` or `Current` version available.
 
-In atom-shell we have similar concepts: Since atom-shell displays a GUI by
-showing web pages, we have **scripts that run in the web page**, and also
-**scripts run by the atom-shell runtime**, which creates those web pages.
-Like Node.js, we call them **client scripts**, and **browser scripts**
-(meaning the browser replaces the concept of the server here).
+> Please install Node.js using pre-built installers for your platform.
+> You may encounter incompatibility issues with different development tools otherwise.
 
-In traditional Node.js applications, communication between server and
-client is usually facilitated via web sockets. In atom-shell, we have provided
-the [ipc](../api/ipc-renderer.md) module for browser to client
-communication, and the [remote](../api/remote.md) module for easy RPC
-support.
+To check that Node.js was installed correctly, type the following commands in your terminal client:
 
-### Web page and Node.js
+```sh
+node -v
+npm -v
+```
 
-Normal web pages are designed to not reach outside of the browser, which makes
-them unsuitable for interacting with native systems. Atom-shell provides Node.js
-APIs in web pages so you can access native resources from web pages, just like
-[Node-Webkit](https://github.com/rogerwang/node-webkit).
+The commands should print the versions of Node.js and npm accordingly.
+If both commands succeeded, you are ready to install Electron.
 
-But unlike Node-Webkit, you cannot do native GUI related operations in web
-pages. Instead you need to do them on the browser side by sending messages to
-it, or using the easy [remote](../api/remote.md) module.
+### Create a basic application
 
+From a development perspective, an Electron application is essentially a Node.js application. This means that the starting point of your Electron application will be a `package.json` file like in any other Node.js application. A minimal Electron application has the following structure:
 
-## Write your first atom-shell app
-
-Generally, an atom-shell app would be structured like this (see the
-[hello-atom](https://github.com/dougnukem/hello-atom) repo for reference):
-
-```text
-your-app/
+```plaintext
+my-electron-app/
 ├── package.json
 ├── main.js
 └── index.html
 ```
 
-The format of `package.json` is exactly the same as that of Node's modules, and
-the script specified by the `main` field is the startup script of your app,
-which will run on the browser side. An example of your `package.json` might look
-like this:
+Let's create a basic application based on the structure above.
 
-```json
-{
-  "name"    : "your-app",
-  "version" : "0.1.0",
-  "main"    : "main.js"
+#### Install Electron
+
+Create a folder for your project and install Electron there:
+
+```sh
+mkdir my-electron-app && cd my-electron-app
+npm init -y
+npm i --save-dev electron
+```
+
+#### Create the main script file
+
+The main script specifies the entry point of your Electron application (in our case, the `main.js` file) that will run the Main process. Typically, the script that runs in the Main process controls the lifecycle of the application, displays the graphical user interface and its elements, performs native operating system interactions, and creates Renderer processes within web pages. An Electron application can have only one Main process.
+
+The main script may look as follows:
+
+```javascript fiddle='docs/fiddles/quick-start'
+const { app, BrowserWindow } = require('electron')
+
+function createWindow () {
+  const win = new BrowserWindow({
+    width: 800,
+    height: 600,
+    webPreferences: {
+      nodeIntegration: true
+    }
+  })
+
+  win.loadFile('index.html')
 }
+
+app.whenReady().then(createWindow)
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit()
+  }
+})
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow()
+  }
+})
 ```
 
-The `main.js` should create windows and handle system events, a typical
-example being:
+##### What is going on above?
 
-```javascript
-var app = require('app');  // Module to control application life.
-var BrowserWindow = require('browser-window');  // Module to create native browser window.
+1. Line 1: First, you import the `app` and `BrowserWindow` modules of the `electron` package to be able to manage your application's lifecycle events, as well as create and control browser windows.
+2. Line 3: After that, you define a function that creates a [new browser window](../api/browser-window.md#new-browserwindowoptions) with node integration enabled, loads `index.html` file into this window (line 12, we will discuss the file later).
+3. Line 15: You create a new browser window by invoking the `createWindow` function once the Electron application [is initialized](../api/app.md#appwhenready).
+4. Line 17: You add a new listener that tries to quit the application when it no longer has any open windows. This listener is a no-op on macOS due to the operating system's [window management behavior](https://support.apple.com/en-ca/guide/mac-help/mchlp2469/mac).
+5. Line 23: You add a new listener that creates a new browser window only if when the application has no visible windows after being activated. For example, after launching the application for the first time, or re-launching the already running application.
 
-// Report crashes to our server.
-require('crash-reporter').start();
+#### Create a web page
 
-// Keep a global reference of the window object, if you don't, the window will
-// be closed automatically when the javascript object is GCed.
-var mainWindow = null;
+This is the web page you want to display once the application is initialized. This web page represents the Renderer process. You can create multiple browser windows, where each window uses its own independent Renderer. Each window can optionally be granted with full access to Node.js API through the `nodeIntegration` preference.
 
-// Quit when all windows are closed.
-app.on('window-all-closed', function() {
-  if (process.platform != 'darwin')
-    app.quit();
-});
+The `index.html` page looks as follows:
 
-// This method will be called when atom-shell has done everything
-// initialization and ready for creating browser windows.
-app.on('ready', function() {
-  // Create the browser window.
-  mainWindow = new BrowserWindow({width: 800, height: 600});
-
-  // and load the index.html of the app.
-  mainWindow.loadUrl('file://' + __dirname + '/index.html');
-
-  // Emitted when the window is closed.
-  mainWindow.on('closed', function() {
-    // Dereference the window object, usually you would store windows
-    // in an array if your app supports multi windows, this is the time
-    // when you should delete the corresponding element.
-    mainWindow = null;
-  });
-});
-```
-
-Finally the `index.html` is the web page you want to show:
-
-```html
+```html fiddle='docs/fiddles/quick-start'
 <!DOCTYPE html>
 <html>
-  <head>
+<head>
+    <meta charset="UTF-8">
     <title>Hello World!</title>
-  </head>
-  <body>
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
+</head>
+<body style="background: white;">
     <h1>Hello World!</h1>
-    We are using node.js <script>document.write(process.version)</script>
-    and atom-shell <script>document.write(process.versions['atom-shell'])</script>.
-  </body>
+    <p>
+        We are using node <script>document.write(process.versions.node)</script>,
+        Chrome <script>document.write(process.versions.chrome)</script>,
+        and Electron <script>document.write(process.versions.electron)</script>.
+    </p>
+</body>
 </html>
 ```
 
-## Run your app
+#### Modify your package.json file
 
-After you're done writing your app, you can create a distribution by
-following the [Application distribution](./application-distribution.md) guide
-and then execute the packaged app. You can also just use the downloaded
-atom-shell binary to execute your app directly.
+Your Electron application uses the `package.json` file as the main entry point (as any other Node.js application). The main script of your application is `main.js`, so modify the `package.json` file accordingly:
 
-On Windows:
-
-```cmd
-$ .\atom-shell\atom.exe your-app\
+```json
+{
+    "name": "my-electron-app",
+    "version": "0.1.0",
+    "author": "your name",
+    "description": "My Electron app",
+    "main": "main.js"
+}
 ```
 
-On Linux:
+> NOTE: If the `main` field is omitted, Electron will attempt to load an `index.js` file from the directory containing `package.json`.
 
-```bash
-$ ./atom-shell/atom your-app/
+> NOTE: The `author` and `description` fields are required for packaging, otherwise error will occur when running `npm run make`.
+
+By default, the `npm start` command will run the main script with Node.js. To run the script with Electron, you need to change it as such:
+
+```json
+{
+    "name": "my-electron-app",
+    "version": "0.1.0",
+    "author": "your name",
+    "description": "My Electron app",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron ."
+    }
+}
 ```
 
-On Mac OS X:
+#### Run your application
 
-```bash
-$ ./Atom.app/Contents/MacOS/Atom your-app/
+```sh
+npm start
 ```
 
-`Atom.app` here is part of the atom-shell's release package, you can download
-it from [here](https://github.com/atom/atom-shell/releases).
+Your running Electron app should look as follows:
+
+![Simplest Electron app](../images/simplest-electron-app.png)
+
+### Package and distribute the application
+
+The simplest and the fastest way to distribute your newly created app is using
+[Electron Forge](https://www.electronforge.io).
+
+1. Import Electron Forge to your app folder:
+
+    ```sh
+    npx @electron-forge/cli import
+
+    ✔ Checking your system
+    ✔ Initializing Git Repository
+    ✔ Writing modified package.json file
+    ✔ Installing dependencies
+    ✔ Writing modified package.json file
+    ✔ Fixing .gitignore
+
+    We have ATTEMPTED to convert your app to be in a format that electron-forge understands.
+
+    Thanks for using "electron-forge"!!!
+    ```
+
+1. Create a distributable:
+
+    ```sh
+    npm run make
+
+    > my-gsod-electron-app@1.0.0 make /my-electron-app
+    > electron-forge make
+
+    ✔ Checking your system
+    ✔ Resolving Forge Config
+    We need to package your application before we can make it
+    ✔ Preparing to Package Application for arch: x64
+    ✔ Preparing native dependencies
+    ✔ Packaging Application
+    Making for the following targets: zip
+    ✔ Making for target: zip - On platform: darwin - For arch: x64
+    ```
+
+    Electron-forge creates the `out` folder where your package will be located:
+
+    ```plain
+    // Example for MacOS
+    out/
+    ├── out/make/zip/darwin/x64/my-electron-app-darwin-x64-1.0.0.zip
+    ├── ...
+    └── out/my-electron-app-darwin-x64/my-electron-app.app/Contents/MacOS/my-electron-app
+    ```
+
+[node-download]: https://nodejs.org/en/download/
+
+## Learning the basics
+
+This section guides you through the basics of how Electron works under the hood. It aims at strengthening knowledge about Electron and the application created earlier in the Quickstart section.
+
+### Application architecture
+
+Electron consists of three main pillars:
+
+* **Chromium** for displaying web content.
+* **Node.js** for working with the local filesystem and the operating system.
+* **Custom APIs** for working with often-needed OS native functions.
+
+Developing an application with Electron is like building a Node.js app with a web interface or building web pages with seamless Node.js integration.
+
+#### Main and Renderer Processes
+
+As it was mentioned before, Electron has two types of processes: Main and Renderer.
+
+* The Main process **creates** web pages by creating `BrowserWindow` instances. Each `BrowserWindow` instance runs the web page in its Renderer process. When a `BrowserWindow` instance is destroyed, the corresponding Renderer process gets terminated as well.
+* The Main process **manages** all web pages and their corresponding Renderer processes.
+
+----
+
+* The Renderer process **manages** only the corresponding web page. A crash in one Renderer process does not affect other Renderer processes.
+* The Renderer process **communicates** with the Main process via IPC to perform GUI operations in a web page. Calling native GUI-related APIs from the Renderer process directly is restricted due to security concerns and potential resource leakage.
+
+----
+
+The communication between processes is possible via Inter-Process Communication (IPC) modules: [`ipcMain`](../api/ipc-main.md) and [`ipcRenderer`](../api/ipc-renderer.md).
+
+#### APIs
+
+##### Electron API
+
+Electron APIs are assigned based on the process type, meaning that some modules can be used from either the Main or Renderer process, and some from both. Electron's API documentation indicates which process each module can be used from.
+
+For example, to access the Electron API in both processes, require its included module:
+
+```js
+const electron = require('electron')
+```
+
+To create a window, call the `BrowserWindow` class, which is only available in the Main process:
+
+```js
+const { BrowserWindow } = require('electron')
+const win = new BrowserWindow()
+```
+
+To call the Main process from the Renderer, use the IPC module:
+
+```js
+// In the Main process
+const { ipcMain } = require('electron')
+
+ipcMain.handle('perform-action', (event, ...args) => {
+  // ... do actions on behalf of the Renderer
+})
+```
+
+```js
+// In the Renderer process
+const { ipcRenderer } = require('electron')
+
+ipcRenderer.invoke('perform-action', ...args)
+```
+
+> NOTE: Because Renderer processes may run untrusted code (especially from third parties), it is important to carefully validate the requests that come to the Main process.
+
+##### Node.js API
+
+> NOTE: To access the Node.js API from the Renderer process, you need to set the `nodeIntegration` preference to `true`.
+
+Electron exposes full access to Node.js API and its modules both in the Main and the Renderer processes. For example, you can read all the files from the root directory:
+
+```js
+const fs = require('fs')
+
+const root = fs.readdirSync('/')
+
+console.log(root)
+```
+
+To use a Node.js module, you first need to install it as a dependency:
+
+```sh
+npm install --save aws-sdk
+```
+
+Then, in your Electron application, require the module:
+
+```js
+const S3 = require('aws-sdk/clients/s3')
+```

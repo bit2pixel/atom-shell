@@ -1,68 +1,79 @@
-# Build instructions (Windows)
+# Build Instructions (Windows)
+
+Follow the guidelines below for building Electron on Windows.
 
 ## Prerequisites
 
-* Windows 7 / Server 2008 R2 or higher
-* Visual Studio 2013 - [download VS 2013 Community Edition for
-  free](http://www.visualstudio.com/products/visual-studio-community-vs)
-* [Python 2.7](http://www.python.org/download/releases/2.7/)
-* 32bit [node.js](http://nodejs.org/download/)
-* [git](http://git-scm.com)
+* Windows 10 / Server 2012 R2 or higher
+* Visual Studio 2017 15.7.2 or higher - [download VS 2019 Community Edition for
+  free](https://www.visualstudio.com/vs/)
+  * See [the Chromium build documentation](https://chromium.googlesource.com/chromium/src/+/master/docs/windows_build_instructions.md#visual-studio) for more details on which Visual Studio
+  components are required.
+  * If your Visual Studio is installed in a directory other than the default, you'll need to
+  set a few environment variables to point the toolchains to your installation path.
+    * `vs2019_install = DRIVE:\path\to\Microsoft Visual Studio\2019\Community`, replacing `2019` and `Community` with your installed versions and replacing `DRIVE:` with the drive that Visual Studio is on. Often, this will be `C:`.
+    * `WINDOWSSDKDIR = DRIVE:\path\to\Windows Kits\10`, replacing `DRIVE:` with the drive that Windows Kits is on. Often, this will be `C:`.
+  * [Python for Windows (pywin32) Extensions](https://pypi.org/project/pywin32/#files)
+  is also needed in order to run the build process.
+* [Node.js](https://nodejs.org/download/)
+* [Git](https://git-scm.com)
+* Debugging Tools for Windows of Windows SDK 10.0.15063.468 if you plan on
+creating a full distribution since `symstore.exe` is used for creating a symbol
+store from `.pdb` files.
+  * Different versions of the SDK can be installed side by side. To install the
+  SDK, open Visual Studio Installer, select
+  `Change` → `Individual Components`, scroll down and select the appropriate
+  Windows SDK to install. Another option would be to look at the
+  [Windows SDK and emulator archive](https://developer.microsoft.com/en-us/windows/downloads/sdk-archive)
+  and download the standalone version of the SDK respectively.
+  * The SDK Debugging Tools must also be installed. If the Windows 10 SDK was installed
+  via the Visual Studio installer, then they can be installed by going to:
+  `Control Panel` → `Programs` → `Programs and Features` → Select the "Windows Software Development Kit" →
+  `Change` → `Change` → Check "Debugging Tools For Windows" → `Change`.
+  Or, you can download the standalone SDK installer and use it to install the Debugging Tools.
 
-If you don't have a Windows installation at the moment,
-[modern.ie](https://www.modern.ie/en-us/virtualization-tools#downloads) has
-timebombed versions of Windows that you can use to build Atom Shell.
+If you don't currently have a Windows installation,
+[dev.microsoftedge.com](https://developer.microsoft.com/en-us/microsoft-edge/tools/vms/)
+has timebombed versions of Windows that you can use to build Electron.
 
-The building of atom-shell is done entirely with command-line scripts, so you
-can use any editor you like to develop atom-shell, but it also means you can
-not use Visual Studio for the development. Support of building with Visual
-Studio will come in the future.
+Building Electron is done entirely with command-line scripts and cannot be done
+with Visual Studio. You can develop Electron with any editor but support for
+building with Visual Studio will come in the future.
 
 **Note:** Even though Visual Studio is not used for building, it's still
-**required** because we need the build toolchains it provided.
+**required** because we need the build toolchains it provides.
 
-## Getting the code
+## Exclude source tree from Windows Security
 
-```powershell
-git clone https://github.com/atom/atom-shell.git
-```
-
-## Bootstrapping
-
-The bootstrap script will download all necessary build dependencies and create
-build project files. Notice that we're using `ninja` to build atom-shell so
-there is no Visual Studio project generated.
-
-```powershell
-cd atom-shell
-python script\bootstrap.py
-```
+Windows Security doesn't like one of the files in the Chromium source code
+(see https://crbug.com/441184), so it will constantly delete it, causing `gclient sync` issues.
+You can exclude the source tree from being monitored by Windows Security by
+[following these instructions](https://support.microsoft.com/en-us/windows/add-an-exclusion-to-windows-security-811816c0-4dfd-af4a-47e4-c301afe13b26).
 
 ## Building
 
-Build both Release and Debug targets:
+See [Build Instructions: GN](build-instructions-gn.md)
+
+## 32bit Build
+
+To build for the 32bit target, you need to pass `target_cpu = "x86"` as a GN
+arg. You can build the 32bit target alongside the 64bit target by using a
+different output directory for GN, e.g. `out/Release-x86`, with different
+arguments.
 
 ```powershell
-python script\build.py
+$ gn gen out/Release-x86 --args="import(\"//electron/build/args/release.gn\") target_cpu=\"x86\""
 ```
 
-You can also only build the Debug target:
+The other building steps are exactly the same.
+
+## Visual Studio project
+
+To generate a Visual Studio project, you can pass the `--ide=vs2017` parameter
+to `gn gen`:
 
 ```powershell
-python script\build.py -c Debug
-```
-
-After building is done, you can find `atom.exe` under `out\Debug`.
-
-## 64bit support
-
-Currently atom-shell can only be built for 32bit target on Windows, support for
-64bit will come in future.
-
-## Tests
-
-```powershell
-python script\test.py
+$ gn gen out/Testing --ide=vs2017
 ```
 
 ## Troubleshooting
@@ -70,44 +81,48 @@ python script\test.py
 ### Command xxxx not found
 
 If you encountered an error like `Command xxxx not found`, you may try to use
-the `VS2012 Command Prompt` console to execute the build scripts.
+the `VS2015 Command Prompt` console to execute the build scripts.
 
-### Assertion failed: ((handle))->activecnt >= 0
+### Fatal internal compiler error: C1001
 
-If building under Cygwin, you may see `bootstrap.py` failed with following
-error:
-
-```
-Assertion failed: ((handle))->activecnt >= 0, file src\win\pipe.c, line 1430
-
-Traceback (most recent call last):
-  File "script/bootstrap.py", line 87, in <module>
-    sys.exit(main())
-  File "script/bootstrap.py", line 22, in main
-    update_node_modules('.')
-  File "script/bootstrap.py", line 56, in update_node_modules
-    execute([NPM, 'install'])
-  File "/home/zcbenz/codes/raven/script/lib/util.py", line 118, in execute
-    raise e
-subprocess.CalledProcessError: Command '['npm.cmd', 'install']' returned non-zero exit status 3
-```
-
-This is caused by a bug when using Cygwin python and Win32 node together. The
-solution is to use the Win32 python to execute the bootstrap script (supposing
-you have installed python under `C:\Python27`):
-
-```bash
-/cygdrive/c/Python27/python.exe script/bootstrap.py
-```
+Make sure you have the latest Visual Studio update installed.
 
 ### LNK1181: cannot open input file 'kernel32.lib'
 
-Try reinstalling 32bit node.js.
+Try reinstalling 32bit Node.js.
 
 ### Error: ENOENT, stat 'C:\Users\USERNAME\AppData\Roaming\npm'
 
-Simply making that directory [should fix the problem](http://stackoverflow.com/a/25095327/102704):
+Creating that directory [should fix the problem](https://stackoverflow.com/a/25095327/102704):
 
 ```powershell
-mkdir ~\AppData\Roaming\npm
+$ mkdir ~\AppData\Roaming\npm
 ```
+
+### node-gyp is not recognized as an internal or external command
+
+You may get this error if you are using Git Bash for building, you should use
+PowerShell or VS2015 Command Prompt instead.
+
+### cannot create directory at '...': Filename too long
+
+node.js has some [extremely long pathnames](https://github.com/electron/node/tree/electron/deps/npm/node_modules/libnpx/node_modules/yargs/node_modules/read-pkg-up/node_modules/read-pkg/node_modules/load-json-file/node_modules/parse-json/node_modules/error-ex/node_modules/is-arrayish), and by default git on windows doesn't handle long pathnames correctly (even though windows supports them). This should fix it:
+
+```sh
+$ git config --system core.longpaths true
+```
+
+### error: use of undeclared identifier 'DefaultDelegateCheckMode'
+
+This can happen during build, when Debugging Tools for Windows has been installed with Windows Driver Kit. Uninstall Windows Driver Kit and install Debugging Tools with steps described above.
+
+### ImportError: No module named win32file
+
+Make sure you have installed `pywin32` with `pip install pywin32`.
+
+### Build Scripts Hang Until Keypress
+
+This bug is a "feature" of Windows' command prompt. It happens when clicking inside the prompt window with
+`QuickEdit` enabled and is intended to allow selecting and copying output text easily.
+Since each accidental click will pause the build process, you might want to disable this
+feature in the command prompt properties.

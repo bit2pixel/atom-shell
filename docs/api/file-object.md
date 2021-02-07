@@ -1,11 +1,13 @@
-# `File` object
+# `File` Object
 
-The DOM's File interface provides abstraction around native files, in order to
-let users work on native files directly with HTML5 file API, atom-shell has
-added a `path` attribute to `File` interface which exposes the file's real path
-on filesystem.
+> Use the HTML5 `File` API to work natively with files on the filesystem.
 
-Example on getting real path of a dragged file:
+The DOM's File interface provides abstraction around native files in order to
+let users work on native files directly with the HTML5 file API. Electron has
+added a `path` attribute to the `File` interface which exposes the file's real
+path on filesystem.
+
+Example of getting a real path from a dragged-onto-the-app file:
 
 ```html
 <div id="holder">
@@ -13,18 +15,17 @@ Example on getting real path of a dragged file:
 </div>
 
 <script>
-  var holder = document.getElementById('holder');
-  holder.ondragover = function () {
-    return false;
-  };
-  holder.ondragleave = holder.ondragend = function () {
-    return false;
-  };
-  holder.ondrop = function (e) {
+  document.addEventListener('drop', (e) => {
     e.preventDefault();
-    var file = e.dataTransfer.files[0];
-    console.log('File you dragged here is', file.path);
-    return false;
-  };
+    e.stopPropagation();
+
+    for (const f of e.dataTransfer.files) {
+      console.log('File(s) you dragged here: ', f.path)
+    }
+  });
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
 </script>
 ```
